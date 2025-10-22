@@ -39,9 +39,11 @@ public class AuthController {
                 + "?client_id=" + CLIENT_ID
                 + "&redirect_uri=" + redirectUri
                 + "&response_type=code"
-                + "&scope=" + URLEncoder.encode("https://www.googleapis.com/auth/drive.file", StandardCharsets.UTF_8)
+                + "&scope=" + URLEncoder.encode(
+                "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid",
+                StandardCharsets.UTF_8)
                 + "&access_type=offline"
-                + "&prompt=consent"; // ensures refresh token is returned
+                + "&prompt=consent";
 
         response.sendRedirect(url);
     }

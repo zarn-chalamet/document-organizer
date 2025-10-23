@@ -1,7 +1,9 @@
 package com.projects.document_organizer.service.impl;
 
 import com.projects.document_organizer.model.Document;
+import com.projects.document_organizer.model.User;
 import com.projects.document_organizer.respository.DocumentRepository;
+import com.projects.document_organizer.service.EmailService;
 import com.projects.document_organizer.service.ExpiryCheckService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +19,7 @@ import java.util.List;
 public class ExpiryCheckServiceImpl implements ExpiryCheckService {
 
     private final DocumentRepository documentRepository;
+    private final EmailService emailService;
 
     // Run every day at 09:00 AM
     @Scheduled(cron = "0 0 9 * * ?")
@@ -33,6 +36,7 @@ public class ExpiryCheckServiceImpl implements ExpiryCheckService {
             log.info("Document '{}' will expire soon (on {}).", doc.getTitle(), doc.getExpiryDate());
 
             //send email to the user
+            emailService.sendEmailNotification(doc);
 
         }
 
@@ -40,6 +44,7 @@ public class ExpiryCheckServiceImpl implements ExpiryCheckService {
             log.warn("Document '{}' has already expired (on {}).", doc.getTitle(), doc.getExpiryDate());
 
             //send email to the user
+            emailService.sendEmailNotification(doc);
         }
     }
 }

@@ -1,33 +1,38 @@
 package com.projects.document_organizer.model;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import lombok.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
 @Table(name = "users")
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Data
 @Builder
 public class User {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false)
     private String name;
 
     @Column(unique = true, nullable = false)
     private String email;
 
+    @JsonIgnore
+    @Column(length = 2000)
     private String googleAccessToken;
+
+    @JsonIgnore
+    @Column(length = 2000)
     private String googleRefreshToken;
 
+    private LocalDateTime lastTokenUpdatedAt;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Document> documents;
+    @ToString.Exclude
+    private List<com.projects.document_organizer.model.Document> documents;
 }

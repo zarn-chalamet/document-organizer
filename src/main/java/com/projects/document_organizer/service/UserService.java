@@ -4,5 +4,7 @@ import com.projects.document_organizer.model.User;
 
 public interface UserService {
 
-    public User saveOrUpdateGoogleTokens(String email, String name, String accessToken, String refreshToken);
+    public User saveOrUpdateUserTokens(String email, String name, String accessToken, String refreshToken);
+
+    public String getValidAccessToken(String email);
 }

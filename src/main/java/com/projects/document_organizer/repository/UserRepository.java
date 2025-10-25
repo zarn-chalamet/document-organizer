@@ -1,4 +1,4 @@
-package com.projects.document_organizer.respository;
+package com.projects.document_organizer.repository;
 
 import com.projects.document_organizer.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,7 +8,7 @@ import java.util.Optional;
 
 @Repository
 public interface UserRepository extends JpaRepository<User,Long> {
-    User findByEmail(String email);
+    Optional<User> findByEmail(String email);
 
     Optional<User> findByGoogleAccessToken(String accessToken);
 }

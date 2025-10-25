@@ -1,8 +1,7 @@
 package com.projects.document_organizer.service.impl;
 
 import com.projects.document_organizer.model.Document;
-import com.projects.document_organizer.model.User;
-import com.projects.document_organizer.respository.DocumentRepository;
+import com.projects.document_organizer.repository.DocumentRepository;
 import com.projects.document_organizer.service.EmailService;
 import com.projects.document_organizer.service.ExpiryCheckService;
 import lombok.RequiredArgsConstructor;

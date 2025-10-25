@@ -1,4 +1,4 @@
-package com.projects.document_organizer.respository;
+package com.projects.document_organizer.repository;
 
 import com.projects.document_organizer.model.Document;
 import org.springframework.data.jpa.repository.JpaRepository;

@@ -18,6 +18,13 @@ public class DocumentController {
 
     private final DocumentService documentService;
 
+    //Test
+    @GetMapping("/test")
+    public ResponseEntity<?> testing(){
+        System.out.println("testing phase");
+        return ResponseEntity.ok("Testing done.");
+    }
+
     //upload file to google drive
     @PostMapping("/upload")
     public ResponseEntity<?> uploadFileToDrive(

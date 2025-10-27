@@ -1,5 +1,6 @@
 package com.projects.document_organizer.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -34,5 +35,6 @@ public class User {
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @ToString.Exclude
-    private List<com.projects.document_organizer.model.Document> documents;
+    @JsonManagedReference
+    private List<Document> documents;
 }

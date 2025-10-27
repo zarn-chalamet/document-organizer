@@ -12,6 +12,7 @@ import com.projects.document_organizer.model.User;
 import com.projects.document_organizer.repository.DocumentRepository;
 import com.projects.document_organizer.repository.UserRepository;
 import com.projects.document_organizer.service.DocumentService;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,11 +27,15 @@ public class DocumentServiceImpl implements DocumentService {
     private final UserRepository userRepository;
 
     @Override
-    public void uploadFileToGoogleDrive(MultipartFile file, DocumentRequestDto requestDto) {
+    @Transactional
+    public void uploadFileToGoogleDrive(User user, MultipartFile file, DocumentRequestDto requestDto) {
         try {
-            // Initialize Drive
+            System.out.println("Upload file phase started...");
+            System.out.println("User received: " + user);
+
+            // Initialize Google Drive API
             HttpRequestInitializer requestInitializer = request ->
-                    request.getHeaders().setAuthorization("Bearer " + requestDto.getAccessToken());
+                    request.getHeaders().setAuthorization("Bearer " + user.getGoogleAccessToken());
 
             Drive drive = new Drive.Builder(
                     new NetHttpTransport(),
@@ -39,27 +44,24 @@ public class DocumentServiceImpl implements DocumentService {
                     .setApplicationName("Digital Document Organizer")
                     .build();
 
-            // Find the user
-            User user = userRepository.findByGoogleAccessToken(requestDto.getAccessToken())
-                    .orElseThrow(() -> new RuntimeException("User not found for this access token"));
-
-            // Get or create user folder
+            // Get or create user's personal folder
             String folderId = getOrCreateUserFolder(drive, user);
 
-            // Prepare metadata and file content
+            // Prepare metadata
             File fileMetadata = new File();
             fileMetadata.setName(file.getOriginalFilename());
-            fileMetadata.setParents(List.of(folderId)); // <== PUT FILE IN USER’S FOLDER
+            fileMetadata.setParents(List.of(folderId));
 
             java.io.File tempFile = convertToFile(file);
             FileContent mediaContent = new FileContent(file.getContentType(), tempFile);
 
-            // Upload file
-            File uploadedFile = drive.files().create(fileMetadata, mediaContent)
+            // Upload file to Drive
+            File uploadedFile = drive.files()
+                    .create(fileMetadata, mediaContent)
                     .setFields("id, webViewLink")
                     .execute();
 
-            // Save document record
+            // Save to database
             Document document = Document.builder()
                     .title(requestDto.getTitle())
                     .description(requestDto.getDescription())
@@ -70,10 +72,9 @@ public class DocumentServiceImpl implements DocumentService {
                     .user(user)
                     .build();
 
-            user.getDocuments().add(document);
-            userRepository.save(user);
+            documentRepository.save(document);
 
-            // Clean up
+            // Clean up temp file
             if (!tempFile.delete()) tempFile.deleteOnExit();
 
         } catch (Exception e) {
@@ -81,22 +82,24 @@ public class DocumentServiceImpl implements DocumentService {
         }
     }
 
-
     @Override
-    public List<Document> getAllDocumentsByUser(String accessToken) {
+    public List<Document> getAllDocumentsByUser(User user) {
+        System.out.println("get all documents - user " + user);
 
-        //find user by access token
-        User user = userRepository.findByGoogleAccessToken(accessToken)
-                .orElseThrow(() -> new RuntimeException("User not found for this access token"));
+        List<Document> documents = documentRepository.findAllByUser(user);
+        System.out.println("documents"+ documents);
 
-        return user.getDocuments();
+        return documents;
     }
 
     private String getOrCreateUserFolder(Drive drive, User user) throws Exception {
         String folderName = "Digital Document Organizer - " + user.getName();
 
-        // Check if folder already exists
-        String query = String.format("mimeType='application/vnd.google-apps.folder' and name='%s' and trashed=false", folderName);
+        String query = String.format(
+                "mimeType='application/vnd.google-apps.folder' and name='%s' and trashed=false",
+                folderName
+        );
+
         List<File> folders = drive.files().list()
                 .setQ(query)
                 .setFields("files(id, name)")
@@ -104,11 +107,9 @@ public class DocumentServiceImpl implements DocumentService {
                 .getFiles();
 
         if (folders != null && !folders.isEmpty()) {
-            // Folder already exists — return its ID
             return folders.get(0).getId();
         }
 
-        // Otherwise create a new folder
         File folderMetadata = new File();
         folderMetadata.setName(folderName);
         folderMetadata.setMimeType("application/vnd.google-apps.folder");
@@ -119,7 +120,6 @@ public class DocumentServiceImpl implements DocumentService {
 
         return folder.getId();
     }
-
 
     private java.io.File convertToFile(MultipartFile multipartFile) {
         try {

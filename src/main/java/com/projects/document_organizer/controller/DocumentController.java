@@ -2,12 +2,15 @@ package com.projects.document_organizer.controller;
 
 import com.projects.document_organizer.dto.DocumentRequestDto;
 import com.projects.document_organizer.model.Document;
+import com.projects.document_organizer.model.User;
 import com.projects.document_organizer.service.DocumentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.security.Principal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -28,27 +31,35 @@ public class DocumentController {
     //upload file to google drive
     @PostMapping("/upload")
     public ResponseEntity<?> uploadFileToDrive(
+            Authentication authentication,
             @RequestParam("file") MultipartFile file,
             @RequestParam("title") String title,
             @RequestParam("description") String description,
             @RequestParam("accessToken") String accessToken,
             @RequestParam("expiryDate")LocalDate expiryDate
             ) {
+        User user = (User) authentication.getPrincipal();
+        System.out.println("user"+ user);
         DocumentRequestDto requestDto = DocumentRequestDto.builder()
                 .title(title)
                 .description(description)
                 .accessToken(accessToken)
                 .expiryDate(expiryDate)
                 .build();
-        documentService.uploadFileToGoogleDrive(file, requestDto);
+
+        System.out.println("upload file");
+        System.out.println(requestDto);
+        documentService.uploadFileToGoogleDrive(user, file, requestDto);
         return ResponseEntity.ok("File uploaded successfully");
     }
 
     //get all document by user
     @GetMapping()
-    public ResponseEntity<List<Document>> getDocumentsByUser(@RequestParam String accessToken) {
+    public ResponseEntity<List<Document>> getDocumentsByUser(Authentication authentication) {
 
-        List<Document> documents = documentService.getAllDocumentsByUser(accessToken);
+        User user = (User) authentication.getPrincipal();
+        System.out.println("user"+ user);
+        List<Document> documents = documentService.getAllDocumentsByUser(user);
 
         return ResponseEntity.ok(documents);
     }

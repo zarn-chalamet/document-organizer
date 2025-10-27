@@ -1,7 +1,9 @@
 package com.projects.document_organizer.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDate;
 
@@ -26,9 +28,13 @@ public class Document {
     private String driveFileLink;   // Web link for viewing
     private String fileType;        // e.g., PDF, JPG, PNG
 
+    @CreationTimestamp
+    private LocalDate uploadedAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     @ToString.Exclude // prevent circular reference when logging
+    @JsonBackReference
     private User user;
 
 }

@@ -21,34 +21,35 @@ public class CategoryController {
     @PostMapping
     public ResponseEntity<CategoryResponseDto> createCategory(
             @RequestBody CategoryRequestDto dto) {
-        String email = getCurrentUserEmail();
-        return ResponseEntity.ok(categoryService.createCategory(dto, email));
+        return ResponseEntity.ok(categoryService.createCategory(dto, getCurrentUserEmail()));
     }
 
     @GetMapping
     public ResponseEntity<List<CategoryResponseDto>> getAllCategories() {
-        String email = getCurrentUserEmail();
-        return ResponseEntity.ok(categoryService.getAllCategories(email));
+        return ResponseEntity.ok(categoryService.getAllCategories(getCurrentUserEmail()));
     }
 
+    // Now supports ?search=xxx and ?filter=expiring|expired|no-date
     @GetMapping("/{id}")
-    public ResponseEntity<CategoryResponseDto> getCategoryById(@PathVariable Long id) {
-        String email = getCurrentUserEmail();
-        return ResponseEntity.ok(categoryService.getCategoryById(id, email));
+    public ResponseEntity<CategoryResponseDto> getCategoryById(
+            @PathVariable Long id,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String filter) {
+        return ResponseEntity.ok(
+                categoryService.getCategoryById(id, getCurrentUserEmail(), search, filter));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<CategoryResponseDto> updateCategory(
             @PathVariable Long id,
             @RequestBody CategoryRequestDto dto) {
-        String email = getCurrentUserEmail();
-        return ResponseEntity.ok(categoryService.updateCategory(id, dto, email));
+        return ResponseEntity.ok(
+                categoryService.updateCategory(id, dto, getCurrentUserEmail()));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteCategory(@PathVariable Long id) {
-        String email = getCurrentUserEmail();
-        categoryService.deleteCategory(id, email);
+        categoryService.deleteCategory(id, getCurrentUserEmail());
         return ResponseEntity.ok().build();
     }
 

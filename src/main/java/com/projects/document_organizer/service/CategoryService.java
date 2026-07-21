@@ -11,7 +11,7 @@ public interface CategoryService {
 
     List<CategoryResponseDto> getAllCategories(String email);
 
-    CategoryResponseDto getCategoryById(Long id, String email);
+    CategoryResponseDto getCategoryById(Long id, String email, String search, String filter);
 
     CategoryResponseDto updateCategory(Long id, CategoryRequestDto dto, String email);
 

@@ -8,6 +8,7 @@ import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 import com.projects.document_organizer.dto.DocumentRequestDto;
 import com.projects.document_organizer.dto.DocumentResponseDto;
+import com.projects.document_organizer.dto.DocumentUpdateDto;
 import com.projects.document_organizer.model.Category;
 import com.projects.document_organizer.model.Document;
 import com.projects.document_organizer.model.User;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -41,25 +43,10 @@ public class DocumentServiceImpl implements DocumentService {
                                                      Long categoryId,
                                                      String email) {
         try {
-            User user = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
+            User user = getUser(email);
+            Category category = getCategory(categoryId, user);
+            Drive drive = buildDrive(email);
 
-            Category category = categoryRepository.findByIdAndUser(categoryId, user)
-                    .orElseThrow(() -> new RuntimeException("Category not found"));
-
-            String accessToken = userService.getValidAccessToken(email);
-
-            HttpRequestInitializer requestInitializer = request ->
-                    request.getHeaders().setAuthorization("Bearer " + accessToken);
-
-            Drive drive = new Drive.Builder(
-                    new NetHttpTransport(),
-                    JacksonFactory.getDefaultInstance(),
-                    requestInitializer)
-                    .setApplicationName("Digital Document Organizer")
-                    .build();
-
-            // Upload directly into the category's folder
             File fileMetadata = new File();
             fileMetadata.setName(file.getOriginalFilename());
             fileMetadata.setParents(List.of(category.getDriveFolderId()));
@@ -83,8 +70,7 @@ public class DocumentServiceImpl implements DocumentService {
                     .category(category)
                     .build();
 
-            Document saved = documentRepository.save(document);
-            return toDto(saved);
+            return toDto(documentRepository.save(document));
 
         } catch (Exception e) {
             log.error("Upload failed", e);
@@ -93,53 +79,152 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
-    public DocumentResponseDto getDocumentById(Long id, String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+    @Transactional
+    public List<DocumentResponseDto> uploadMultipleFilesToCategory(MultipartFile[] files,
+                                                                    Long categoryId,
+                                                                    String email) {
+        List<DocumentResponseDto> results = new ArrayList<>();
+        for (MultipartFile file : files) {
+            // Use file's original name as title
+            String title = file.getOriginalFilename();
+            if (title != null && title.contains(".")) {
+                title = title.substring(0, title.lastIndexOf("."));
+            }
 
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Document not found"));
+            DocumentRequestDto dto = DocumentRequestDto.builder()
+                    .title(title)
+                    .description(null)
+                    .build();
 
-        if (!doc.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Access denied");
+            try {
+                results.add(uploadFileToCategory(file, dto, categoryId, email));
+            } catch (Exception e) {
+                log.error("Failed to upload one of bulk files: {}", file.getOriginalFilename(), e);
+                // Continue with other files
+            }
         }
+        return results;
+    }
 
+    @Override
+    public DocumentResponseDto getDocumentById(Long id, String email) {
+        User user = getUser(email);
+        Document doc = getDocumentOwnedBy(id, user);
         return toDto(doc);
     }
 
     @Override
     @Transactional
-    public void deleteDocument(Long id, String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+    public DocumentResponseDto updateDocument(Long id, DocumentUpdateDto dto, String email) {
+        User user = getUser(email);
+        Document doc = getDocumentOwnedBy(id, user);
 
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Document not found"));
+        boolean titleChanged = dto.getTitle() != null && !dto.getTitle().equals(doc.getTitle());
 
-        if (!doc.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Access denied");
+        if (dto.getTitle() != null) doc.setTitle(dto.getTitle());
+        if (dto.getDescription() != null) doc.setDescription(dto.getDescription());
+        if (dto.getExpiryDate() != null) doc.setExpiryDate(dto.getExpiryDate());
+
+        // Rename file in Drive if title changed
+        if (titleChanged) {
+            try {
+                Drive drive = buildDrive(email);
+                File update = new File();
+                update.setName(dto.getTitle());
+                drive.files().update(doc.getDriveFileId(), update).execute();
+            } catch (Exception e) {
+                log.warn("Failed to rename Drive file: {}", e.getMessage());
+                // Continue — DB update still valid
+            }
         }
 
-        // Delete from Google Drive first
+        return toDto(documentRepository.save(doc));
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponseDto moveDocument(Long id, Long targetCategoryId, String email) {
+        User user = getUser(email);
+        Document doc = getDocumentOwnedBy(id, user);
+        Category target = getCategory(targetCategoryId, user);
+
+        // Skip if already in target
+        if (doc.getCategory() != null && doc.getCategory().getId().equals(targetCategoryId)) {
+            return toDto(doc);
+        }
+
+        // Move file in Drive
         try {
-            String accessToken = userService.getValidAccessToken(email);
-            HttpRequestInitializer requestInitializer = request ->
-                    request.getHeaders().setAuthorization("Bearer " + accessToken);
+            Drive drive = buildDrive(email);
 
-            Drive drive = new Drive.Builder(
-                    new NetHttpTransport(),
-                    JacksonFactory.getDefaultInstance(),
-                    requestInitializer)
-                    .setApplicationName("Digital Document Organizer")
-                    .build();
+            String previousParents = null;
+            if (doc.getCategory() != null) {
+                previousParents = doc.getCategory().getDriveFolderId();
+            }
 
+            drive.files().update(doc.getDriveFileId(), null)
+                    .setAddParents(target.getDriveFolderId())
+                    .setRemoveParents(previousParents)
+                    .setFields("id, parents")
+                    .execute();
+
+        } catch (Exception e) {
+            log.error("Failed to move file in Drive", e);
+            throw new RuntimeException("Failed to move file: " + e.getMessage());
+        }
+
+        doc.setCategory(target);
+        return toDto(documentRepository.save(doc));
+    }
+
+    @Override
+    @Transactional
+    public void deleteDocument(Long id, String email) {
+        User user = getUser(email);
+        Document doc = getDocumentOwnedBy(id, user);
+
+        try {
+            Drive drive = buildDrive(email);
             drive.files().delete(doc.getDriveFileId()).execute();
         } catch (Exception e) {
             log.warn("Failed to delete file from Drive: {}", e.getMessage());
-            // Continue anyway — remove from DB
         }
 
         documentRepository.delete(doc);
+    }
+
+    // ============ Helpers ============
+
+    private User getUser(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    private Category getCategory(Long id, User user) {
+        return categoryRepository.findByIdAndUser(id, user)
+                .orElseThrow(() -> new RuntimeException("Category not found"));
+    }
+
+    private Document getDocumentOwnedBy(Long id, User user) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Document not found"));
+        if (!doc.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Access denied");
+        }
+        return doc;
+    }
+
+    private Drive buildDrive(String email) {
+        String accessToken = userService.getValidAccessToken(email);
+        HttpRequestInitializer requestInitializer = request ->
+                request.getHeaders().setAuthorization("Bearer " + accessToken);
+
+        return new Drive.Builder(
+                new NetHttpTransport(),
+                JacksonFactory.getDefaultInstance(),
+                requestInitializer)
+                .setApplicationName("Digital Document Organizer")
+                .build();
     }
 
     private DocumentResponseDto toDto(Document d) {

@@ -12,6 +12,7 @@ import com.projects.document_organizer.model.Category;
 import com.projects.document_organizer.model.Document;
 import com.projects.document_organizer.model.User;
 import com.projects.document_organizer.repository.CategoryRepository;
+import com.projects.document_organizer.repository.DocumentRepository;
 import com.projects.document_organizer.repository.UserRepository;
 import com.projects.document_organizer.service.CategoryService;
 import com.projects.document_organizer.service.UserService;
@@ -20,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -29,6 +31,7 @@ import java.util.List;
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
     private final UserService userService;
 
@@ -40,13 +43,8 @@ public class CategoryServiceImpl implements CategoryService {
 
         try {
             Drive drive = buildDrive(accessToken);
-
-            // Ensure user's root folder exists
             String rootFolderId = getOrCreateRootFolder(drive, user);
-
-            // Create the category folder inside root
-            String folderName = dto.getName();
-            String categoryFolderId = createDriveFolder(drive, folderName, rootFolderId);
+            String categoryFolderId = createDriveFolder(drive, dto.getName(), rootFolderId);
 
             Category category = Category.builder()
                     .name(dto.getName())
@@ -57,8 +55,7 @@ public class CategoryServiceImpl implements CategoryService {
                     .user(user)
                     .build();
 
-            Category saved = categoryRepository.save(category);
-            return toDto(saved, false);
+            return toDto(categoryRepository.save(category), false, null);
 
         } catch (Exception e) {
             log.error("Error creating category", e);
@@ -70,16 +67,18 @@ public class CategoryServiceImpl implements CategoryService {
     public List<CategoryResponseDto> getAllCategories(String email) {
         User user = getUser(email);
         return categoryRepository.findByUserOrderByCreatedAtDesc(user).stream()
-                .map(c -> toDto(c, false))
+                .map(c -> toDto(c, false, null))
                 .toList();
     }
 
     @Override
-    public CategoryResponseDto getCategoryById(Long id, String email) {
+    public CategoryResponseDto getCategoryById(Long id, String email, String search, String filter) {
         User user = getUser(email);
         Category category = categoryRepository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new RuntimeException("Category not found"));
-        return toDto(category, true);
+
+        List<Document> filteredDocs = applyFilters(category, search, filter);
+        return toDto(category, true, filteredDocs);
     }
 
     @Override
@@ -92,7 +91,6 @@ public class CategoryServiceImpl implements CategoryService {
         String accessToken = userService.getValidAccessToken(email);
 
         try {
-            // If name changed, rename Drive folder too
             if (!category.getName().equals(dto.getName())) {
                 Drive drive = buildDrive(accessToken);
                 File updated = new File();
@@ -104,8 +102,7 @@ public class CategoryServiceImpl implements CategoryService {
             category.setType(dto.getType());
             category.setCustomType(dto.getCustomType());
 
-            Category saved = categoryRepository.save(category);
-            return toDto(saved, false);
+            return toDto(categoryRepository.save(category), false, null);
 
         } catch (Exception e) {
             log.error("Error updating category", e);
@@ -124,15 +121,42 @@ public class CategoryServiceImpl implements CategoryService {
 
         try {
             Drive drive = buildDrive(accessToken);
-            // Deleting the folder in Drive also deletes all files inside
             drive.files().delete(category.getDriveFolderId()).execute();
         } catch (Exception e) {
-            log.warn("Failed to delete Drive folder (may already be gone): {}", e.getMessage());
-            // Continue anyway — DB cleanup still needed
+            log.warn("Failed to delete Drive folder: {}", e.getMessage());
         }
 
-        // JPA cascade deletes all documents inside
         categoryRepository.delete(category);
+    }
+
+    // ============ Filter Logic ============
+
+    private List<Document> applyFilters(Category category, String search, String filter) {
+        List<Document> docs;
+        LocalDate today = LocalDate.now();
+
+        // Apply expiry filter first
+        if ("expiring".equalsIgnoreCase(filter)) {
+            docs = documentRepository.findByCategoryAndExpiryDateBetween(
+                    category, today, today.plusDays(30));
+        } else if ("expired".equalsIgnoreCase(filter)) {
+            docs = documentRepository.findByCategoryAndExpiryDateBefore(category, today);
+        } else if ("no-date".equalsIgnoreCase(filter)) {
+            docs = documentRepository.findByCategoryAndExpiryDateIsNull(category);
+        } else {
+            docs = category.getDocuments();
+        }
+
+        // Apply search on top of filter
+        if (search != null && !search.trim().isEmpty()) {
+            String lower = search.toLowerCase();
+            docs = docs.stream()
+                    .filter(d -> (d.getTitle() != null && d.getTitle().toLowerCase().contains(lower))
+                              || (d.getDescription() != null && d.getDescription().toLowerCase().contains(lower)))
+                    .toList();
+        }
+
+        return docs;
     }
 
     // ============ Helpers ============
@@ -188,12 +212,15 @@ public class CategoryServiceImpl implements CategoryService {
         return folder.getId();
     }
 
-    private CategoryResponseDto toDto(Category c, boolean includeDocuments) {
+    private CategoryResponseDto toDto(Category c, boolean includeDocuments, List<Document> customDocs) {
         List<DocumentResponseDto> docs = null;
-        if (includeDocuments && c.getDocuments() != null) {
-            docs = c.getDocuments().stream()
-                    .map(this::documentToDto)
-                    .toList();
+        if (includeDocuments) {
+            List<Document> source = customDocs != null ? customDocs : c.getDocuments();
+            if (source != null) {
+                docs = source.stream()
+                        .map(this::documentToDto)
+                        .toList();
+            }
         }
 
         return CategoryResponseDto.builder()

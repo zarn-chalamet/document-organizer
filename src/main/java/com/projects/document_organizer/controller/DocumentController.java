@@ -1,65 +1,58 @@
 package com.projects.document_organizer.controller;
 
 import com.projects.document_organizer.dto.DocumentRequestDto;
+import com.projects.document_organizer.dto.DocumentResponseDto;
 import com.projects.document_organizer.model.User;
 import com.projects.document_organizer.service.DocumentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDate;
-import java.util.List;
-import com.projects.document_organizer.dto.DocumentResponseDto;
-import org.springframework.security.core.context.SecurityContextHolder;
-
 @RestController
-@RequestMapping("/v1/api/documents")
+@RequestMapping("/v1/api")
 @RequiredArgsConstructor
 public class DocumentController {
 
     private final DocumentService documentService;
 
-    @GetMapping("/test")
-    public ResponseEntity<?> testing() {
-        System.out.println("testing phase");
-        return ResponseEntity.ok("Testing done.");
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<DocumentResponseDto> getDocumentById(@PathVariable Long id) {
-        String email = getCurrentUserEmail();
-        DocumentResponseDto doc = documentService.getDocumentById(id, email);
-        return ResponseEntity.ok(doc);
-    }
-
-    @PostMapping("/upload")
-    public ResponseEntity<?> uploadFileToDrive(
+    // Upload a file to a specific category
+    @PostMapping("/categories/{categoryId}/upload")
+    public ResponseEntity<DocumentResponseDto> uploadFileToCategory(
+            @PathVariable Long categoryId,
             @RequestParam("file") MultipartFile file,
             @RequestParam("title") String title,
-            @RequestParam("description") String description,
-            @RequestParam("expiryDate") LocalDate expiryDate) {
+            @RequestParam(value = "description", required = false) String description) {
 
         String email = getCurrentUserEmail();
 
         DocumentRequestDto requestDto = DocumentRequestDto.builder()
                 .title(title)
                 .description(description)
-                .expiryDate(expiryDate)
                 .build();
 
-        documentService.uploadFileToGoogleDrive(file, requestDto, email);
-        return ResponseEntity.ok("File uploaded successfully");
+        DocumentResponseDto uploaded = documentService.uploadFileToCategory(
+                file, requestDto, categoryId, email);
+
+        return ResponseEntity.ok(uploaded);
     }
 
-    @GetMapping()
-    public ResponseEntity<List<DocumentResponseDto>> getDocumentsByUser() {
+    // Get a single document
+    @GetMapping("/documents/{id}")
+    public ResponseEntity<DocumentResponseDto> getDocumentById(@PathVariable Long id) {
         String email = getCurrentUserEmail();
-        List<DocumentResponseDto> documents = documentService.getAllDocumentsByUser(email);
-        return ResponseEntity.ok(documents);
+        return ResponseEntity.ok(documentService.getDocumentById(id, email));
     }
 
-    // Gets email from JWT token (already validated by JwtAuthenticationFilter)
+    // Delete a single document
+    @DeleteMapping("/documents/{id}")
+    public ResponseEntity<?> deleteDocument(@PathVariable Long id) {
+        String email = getCurrentUserEmail();
+        documentService.deleteDocument(id, email);
+        return ResponseEntity.ok().build();
+    }
+
     private String getCurrentUserEmail() {
         User user = (User) SecurityContextHolder
                 .getContext()

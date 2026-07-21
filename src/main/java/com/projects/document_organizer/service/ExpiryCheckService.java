@@ -30,6 +30,10 @@ public class ExpiryCheckService {
 
         for (Document doc : docsToCheck) {
 
+            if (doc.getExpiryDate() == null) {
+                continue;
+            }
+            
             // Skip if already notified today
             if (doc.getLastNotifiedAt() != null &&
                     doc.getLastNotifiedAt().isEqual(today)) {

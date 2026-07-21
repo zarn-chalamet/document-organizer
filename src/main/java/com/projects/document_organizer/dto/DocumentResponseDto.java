@@ -15,7 +15,8 @@ public class DocumentResponseDto {
     private Long id;
     private String title;
     private String description;
-    private LocalDate expiryDate;
+    private LocalDate expiryDate;  // Nullable — AI-extracted
     private String driveFileLink;
     private String fileType;
+    private Long categoryId;
 }

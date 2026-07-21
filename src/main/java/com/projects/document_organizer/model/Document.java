@@ -1,9 +1,8 @@
 package com.projects.document_organizer.model;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDate;
 
@@ -22,21 +21,24 @@ public class Document {
     private String title;
     private String description;
 
+    // Nullable — filled by AI later
     private LocalDate expiryDate;
-
-    private String driveFileId;     // Google Drive file ID
-    private String driveFileLink;   // Web link for viewing
-    private String fileType;        // e.g., PDF, JPG, PNG
-
-    @CreationTimestamp
-    private LocalDate uploadedAt;
 
     private LocalDate lastNotifiedAt;
 
+    private String driveFileId;
+    private String driveFileLink;
+    private String fileType;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
-    @ToString.Exclude // prevent circular reference when logging
-    @JsonBackReference
+    @ToString.Exclude
+    @JsonIgnore
     private User user;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    @ToString.Exclude
+    @JsonIgnore
+    private Category category;
 }

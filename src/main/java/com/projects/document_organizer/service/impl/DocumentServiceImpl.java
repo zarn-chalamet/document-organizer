@@ -1,17 +1,20 @@
 package com.projects.document_organizer.service.impl;
 
-import com.google.api.client.http.FileContent;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
+import com.google.api.client.http.InputStreamContent;
 import com.projects.document_organizer.dto.DocumentRequestDto;
+import com.projects.document_organizer.dto.DocumentResponseDto;
 import com.projects.document_organizer.model.Document;
 import com.projects.document_organizer.model.User;
 import com.projects.document_organizer.repository.DocumentRepository;
 import com.projects.document_organizer.repository.UserRepository;
 import com.projects.document_organizer.service.DocumentService;
+import com.projects.document_organizer.service.UserService;
+
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,17 +28,41 @@ public class DocumentServiceImpl implements DocumentService {
 
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
+    private final UserService userService;
 
     @Override
-    @Transactional
-    public void uploadFileToGoogleDrive(User user, MultipartFile file, DocumentRequestDto requestDto) {
-        try {
-            System.out.println("Upload file phase started...");
-            System.out.println("User received: " + user);
+    public DocumentResponseDto getDocumentById(Long id, String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
-            // Initialize Google Drive API
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Document not found"));
+
+        // Security check — make sure user owns this document
+        if (!doc.getUser().getId().equals(user.getId())) {
+                throw new RuntimeException("Access denied");
+        }
+
+        return DocumentResponseDto.builder()
+                .id(doc.getId())
+                .title(doc.getTitle())
+                .description(doc.getDescription())
+                .expiryDate(doc.getExpiryDate())
+                .driveFileLink(doc.getDriveFileLink())
+                .fileType(doc.getFileType())
+                .build();
+    }
+
+    @Override
+    public void uploadFileToGoogleDrive(MultipartFile file, 
+                                        DocumentRequestDto requestDto, 
+                                        String email) {
+        try {
+            // Get valid token (handles refresh automatically)
+            String accessToken = userService.getValidAccessToken(email);
+
             HttpRequestInitializer requestInitializer = request ->
-                    request.getHeaders().setAuthorization("Bearer " + user.getGoogleAccessToken());
+                    request.getHeaders().setAuthorization("Bearer " + accessToken);
 
             Drive drive = new Drive.Builder(
                     new NetHttpTransport(),
@@ -43,6 +70,9 @@ public class DocumentServiceImpl implements DocumentService {
                     requestInitializer)
                     .setApplicationName("Digital Document Organizer")
                     .build();
+
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
 
             // Get or create user's personal folder
             String folderId = getOrCreateUserFolder(drive, user);
@@ -52,8 +82,10 @@ public class DocumentServiceImpl implements DocumentService {
             fileMetadata.setName(file.getOriginalFilename());
             fileMetadata.setParents(List.of(folderId));
 
-            java.io.File tempFile = convertToFile(file);
-            FileContent mediaContent = new FileContent(file.getContentType(), tempFile);
+            InputStreamContent mediaContent = new InputStreamContent(
+                file.getContentType(),
+                file.getInputStream()
+            );
 
             // Upload file to Drive
             File uploadedFile = drive.files()
@@ -74,22 +106,26 @@ public class DocumentServiceImpl implements DocumentService {
 
             documentRepository.save(document);
 
-            // Clean up temp file
-            if (!tempFile.delete()) tempFile.deleteOnExit();
-
         } catch (Exception e) {
             throw new RuntimeException("Error uploading file to Google Drive", e);
         }
     }
 
     @Override
-    public List<Document> getAllDocumentsByUser(User user) {
-        System.out.println("get all documents - user " + user);
+    public List<DocumentResponseDto> getAllDocumentsByUser(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
-        List<Document> documents = documentRepository.findAllByUser(user);
-        System.out.println("documents"+ documents);
-
-        return documents;
+        return user.getDocuments().stream()
+                .map(doc -> DocumentResponseDto.builder()
+                        .id(doc.getId())
+                        .title(doc.getTitle())
+                        .description(doc.getDescription())
+                        .expiryDate(doc.getExpiryDate())
+                        .driveFileLink(doc.getDriveFileLink())
+                        .fileType(doc.getFileType())
+                        .build())
+                .toList();
     }
 
     private String getOrCreateUserFolder(Drive drive, User user) throws Exception {
@@ -119,15 +155,5 @@ public class DocumentServiceImpl implements DocumentService {
                 .execute();
 
         return folder.getId();
-    }
-
-    private java.io.File convertToFile(MultipartFile multipartFile) {
-        try {
-            java.io.File convFile = java.io.File.createTempFile("upload-", multipartFile.getOriginalFilename());
-            multipartFile.transferTo(convFile);
-            return convFile;
-        } catch (Exception e) {
-            throw new RuntimeException("Error converting multipart file to file", e);
-        }
     }
 }

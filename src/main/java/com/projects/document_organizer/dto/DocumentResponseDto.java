@@ -11,9 +11,11 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class DocumentRequestDto {
-
+public class DocumentResponseDto {
+    private Long id;
     private String title;
     private String description;
     private LocalDate expiryDate;
+    private String driveFileLink;
+    private String fileType;
 }

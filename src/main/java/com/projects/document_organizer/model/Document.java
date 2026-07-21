@@ -31,6 +31,8 @@ public class Document {
     @CreationTimestamp
     private LocalDate uploadedAt;
 
+    private LocalDate lastNotifiedAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     @ToString.Exclude // prevent circular reference when logging

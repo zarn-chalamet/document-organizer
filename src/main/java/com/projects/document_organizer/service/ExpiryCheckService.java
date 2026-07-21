@@ -18,30 +18,44 @@ public class ExpiryCheckService {
     private final DocumentRepository documentRepository;
     private final EmailService emailService;
 
-    // Run every day at 09:00 AM
     @Scheduled(cron = "0 0 9 * * ?")
     public void checkDocumentExpiry() {
 
         LocalDate today = LocalDate.now();
-        LocalDate threeDaysFromNow = today.plusDays(3);
+        LocalDate thirtyDaysFromNow = today.plusDays(30);
 
-        // Find documents expiring soon or expired
-        List<Document> expiringDocs = documentRepository.findByExpiryDateBetween(today, threeDaysFromNow);
-        List<Document> expiredDocs = documentRepository.findByExpiryDateBefore(today);
+        // Get all documents expiring within 30 days AND already expired
+        List<Document> docsToCheck = documentRepository
+                .findByExpiryDateBefore(thirtyDaysFromNow);
 
-        for (Document doc : expiringDocs) {
-            log.info("Document '{}' will expire soon (on {}).", doc.getTitle(), doc.getExpiryDate());
+        for (Document doc : docsToCheck) {
 
-            //send email to the user
-            emailService.sendEmailNotification(doc);
+            // Skip if already notified today
+            if (doc.getLastNotifiedAt() != null &&
+                    doc.getLastNotifiedAt().isEqual(today)) {
+                continue;
+            }
 
-        }
+            long daysUntilExpiry = today.until(
+                    doc.getExpiryDate(),
+                    java.time.temporal.ChronoUnit.DAYS
+            );
 
-        for (Document doc : expiredDocs) {
-            log.warn("Document '{}' has already expired (on {}).", doc.getTitle(), doc.getExpiryDate());
+            // Only notify on these specific days
+            boolean shouldNotify = daysUntilExpiry <= 0   // already expired
+                    || daysUntilExpiry == 1
+                    || daysUntilExpiry == 3
+                    || daysUntilExpiry == 7
+                    || daysUntilExpiry == 14
+                    || daysUntilExpiry == 30;
 
-            //send email to the user
-            emailService.sendEmailNotification(doc);
+            if (shouldNotify) {
+                emailService.sendEmailNotification(doc);
+                doc.setLastNotifiedAt(today);
+                documentRepository.save(doc);
+                log.info("Notified '{}' for document '{}', days until expiry: {}",
+                        doc.getUser().getEmail(), doc.getTitle(), daysUntilExpiry);
+            }
         }
     }
 }

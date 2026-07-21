@@ -16,4 +16,5 @@ public interface DocumentRepository extends JpaRepository<Document,Long> {
     List<Document> findByExpiryDateBefore(LocalDate today);
 
     List<Document> findAllByUser(User user);
+
 }

@@ -1,15 +1,18 @@
 package com.projects.document_organizer.service;
 
 import com.projects.document_organizer.dto.DocumentRequestDto;
-import com.projects.document_organizer.model.Document;
-import com.projects.document_organizer.model.User;
+import com.projects.document_organizer.dto.DocumentResponseDto;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 public interface DocumentService {
 
-    void uploadFileToGoogleDrive(User user, MultipartFile file, DocumentRequestDto requestDto);
+    DocumentResponseDto getDocumentById(Long id, String email);
 
-    List<Document> getAllDocumentsByUser(User user);
+    void uploadFileToGoogleDrive(MultipartFile file, 
+                                  DocumentRequestDto requestDto, 
+                                  String email);
+
+    List<DocumentResponseDto> getAllDocumentsByUser(String email);
 }

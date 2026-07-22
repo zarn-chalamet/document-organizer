@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "documents")
@@ -29,6 +30,25 @@ public class Document {
     private String driveFileId;
     private String driveFileLink;
     private String fileType;
+
+    // AI Scan Fields 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private ScanStatus scanStatus = ScanStatus.PENDING;
+
+    // Raw OCR text — stays local, never sent to cloud
+    @Column(columnDefinition = "TEXT")
+    private String extractedText;
+
+    // Auto-extracted expiry date — user can confirm or override
+    private LocalDate extractedExpiryDate;
+
+    // Detected document type from OCR (Passport, Visa, etc.)
+    private String detectedDocumentType;
+
+    // When OCR was last attempted
+    private LocalDateTime scannedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")

@@ -16,6 +16,7 @@ import com.projects.document_organizer.repository.CategoryRepository;
 import com.projects.document_organizer.repository.DocumentRepository;
 import com.projects.document_organizer.repository.UserRepository;
 import com.projects.document_organizer.service.DocumentService;
+import com.projects.document_organizer.service.ScanService;
 import com.projects.document_organizer.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
     private final UserService userService;
+    private final ScanService scanService;
 
     @Override
     @Transactional
@@ -61,16 +63,22 @@ public class DocumentServiceImpl implements DocumentService {
                     .execute();
 
             Document document = Document.builder()
-                    .title(requestDto.getTitle())
-                    .description(requestDto.getDescription())
-                    .driveFileId(uploadedFile.getId())
-                    .driveFileLink(uploadedFile.getWebViewLink())
-                    .fileType(file.getContentType())
-                    .user(user)
-                    .category(category)
-                    .build();
+                .title(requestDto.getTitle())
+                .description(requestDto.getDescription())
+                .driveFileId(uploadedFile.getId())
+                .driveFileLink(uploadedFile.getWebViewLink())
+                .fileType(file.getContentType())
+                .user(user)
+                .category(category)
+                .build();
 
-            return toDto(documentRepository.save(document));
+            Document saved = documentRepository.save(document);
+
+            // Trigger async OCR — non-blocking, won't slow upload response
+            byte[] fileBytes = file.getBytes();
+            scanService.scanDocumentAsync(saved.getId(), fileBytes, file.getContentType());
+
+            return toDto(saved);
 
         } catch (Exception e) {
             log.error("Upload failed", e);
@@ -236,6 +244,9 @@ public class DocumentServiceImpl implements DocumentService {
                 .driveFileLink(d.getDriveFileLink())
                 .fileType(d.getFileType())
                 .categoryId(d.getCategory() != null ? d.getCategory().getId() : null)
+                .scanStatus(d.getScanStatus())
+                .extractedExpiryDate(d.getExtractedExpiryDate())
+                .detectedDocumentType(d.getDetectedDocumentType())
                 .build();
     }
 }

@@ -13,6 +13,7 @@ import com.projects.document_organizer.model.Category;
 import com.projects.document_organizer.model.Document;
 import com.projects.document_organizer.model.User;
 import com.projects.document_organizer.repository.CategoryRepository;
+import com.projects.document_organizer.repository.DocumentChunkRepository;
 import com.projects.document_organizer.repository.DocumentRepository;
 import com.projects.document_organizer.repository.UserRepository;
 import com.projects.document_organizer.service.DocumentService;
@@ -37,6 +38,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final UserRepository userRepository;
     private final UserService userService;
     private final ScanService scanService;
+    private final DocumentChunkRepository documentChunkRepository;
 
     @Override
     @Transactional
@@ -198,6 +200,8 @@ public class DocumentServiceImpl implements DocumentService {
             log.warn("Failed to delete file from Drive: {}", e.getMessage());
         }
 
+        // Delete embeddings first
+        documentChunkRepository.deleteByDocument(doc);
         documentRepository.delete(doc);
     }
 

@@ -3,6 +3,7 @@ package com.projects.document_organizer.service.impl;
 import com.projects.document_organizer.model.Document;
 import com.projects.document_organizer.model.ScanStatus;
 import com.projects.document_organizer.repository.DocumentRepository;
+import com.projects.document_organizer.service.EmbeddingService;
 import com.projects.document_organizer.service.OcrService;
 import com.projects.document_organizer.service.ScanService;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +16,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,6 +26,7 @@ public class ScanServiceImpl implements ScanService {
 
     private final DocumentRepository documentRepository;
     private final OcrService ocrService;
+    private final EmbeddingService embeddingService;
 
     @Override
     @Async
@@ -72,6 +73,15 @@ public class ScanServiceImpl implements ScanService {
             documentRepository.save(document);
             log.info("Scan complete for document {} — type: {}, expiry: {}",
                     documentId, detectedType, extractedExpiry);
+
+            // Store embeddings for semantic search
+            try {
+                embeddingService.embedAndStoreDocument(documentId, fullText);
+            } catch (Exception e) {
+                log.error("Embedding failed for document {} — chat search won't work: {}",
+                        documentId, e.getMessage());
+                // Don't fail the whole scan if embedding fails
+            }
 
         } catch (Exception e) {
             log.error("Scan failed for document {}: {}", documentId, e.getMessage());

@@ -31,3 +31,11 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Environment variables (contains secrets)
+.env
+.env.local
+.env.*.local
+
+# Docker volumes (never commit)
+postgres_data/
